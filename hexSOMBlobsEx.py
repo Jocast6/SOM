@@ -5,8 +5,8 @@ import networkx as nx
 from sklearn import datasets
 
 # Import custom classes
-from HexagonalGraph import HexagonalGraph, visualize_graph
-from SelfOrganizingMap import SelfOrganizingMap
+from HexSOM.HexagonalGraph import HexagonalGraph, visualize_graph
+from HexSOM.SelfOrganizingMap import SelfOrganizingMap
 
 
 # Generate synthetic data (iris dataset in this case)
