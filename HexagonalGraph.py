@@ -35,7 +35,7 @@ class HexagonalGrid:
         xv, yv = np.meshgrid(x_range, y_range, sparse=False, indexing='xy')
         xv = xv * self._ratio
         xv[::2, :] += self._ratio/2
-        return xv, yv
+        return yv, xv
 
 class HexagonalGraph(HexagonalGrid):
     """
@@ -84,6 +84,6 @@ def visualize_graph(G):
     - G (networkx.Graph): Hexagonal graph to be visualized.
     """
     pos = {node: node for node in G.nodes()}
-    nx.draw(G, pos, with_labels=False, font_size=8, font_color="black", node_size=300, node_color="skyblue", font_weight="bold", edge_color="gray", linewidths=0.5)
+    nx.draw(G, pos, with_labels=False, font_size=8, font_color="black", node_size=30, node_color="skyblue", font_weight="bold", edge_color="gray", linewidths=0.5)
     plt.show()
 

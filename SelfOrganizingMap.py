@@ -117,7 +117,7 @@ class SelfOrganizingMap:
     
         return np.mean(errors)
 
-    def fit(self, data: List[np.ndarray], epochs: int, min_distance: float, neighborhood_radius: float, repulsion_strength: float) -> None:
+    def fit(self, data: List[np.ndarray], epochs: int, min_distance: float, neighborhood_radius: float) -> None:
         """
         Train the SOM using the given data for a specified number of epochs.
 
@@ -167,6 +167,81 @@ class SelfOrganizingMap:
         cluster_assignments = np.argsort(distances_to_bmu)[:num_clusters]
 
         return cluster_assignments
+    
+
+class WeightedSelfOrganizingMap(SelfOrganizingMap):
+    def gaussian_function(self, distance_to_bmu, weight):
+        """
+        Gaussian neighborhood function using the input weight as the radius.
+        """
+        return np.exp(-(distance_to_bmu**2) / (2 * weight**2))
+    
+    def update_weights_with_gaussian_kernel(self,
+                                            input_vector: np.ndarray,
+                                            bmu: int,
+                                            epoch: int,
+                                            max_epochs: int,
+                                            min_distance: float = 1.0,
+                                            weight: float = 1.0) -> None:
+        """
+        Update the weights of the SOM nodes based on the input vector and the best matching unit (BMU),
+        using a Gaussian RBF kernel. The input-specific weight replaces the neighborhood radius.
+
+        Parameters:
+        - input_vector (numpy.ndarray): Input vector used for weight updates.
+        - bmu (int): Index of the best matching unit.
+        - epoch (int): Current training epoch.
+        - max_epochs (int): Maximum number of training epochs.
+        - min_distance (float): Minimum distance threshold for influence.
+        - weight (float): Weight used as the dynamic neighborhood radius in the Gaussian kernel.
+        """
+        learning_rate = self.learning_rate * (1 - epoch / max_epochs)
+
+        for node_id, node_weight in enumerate(self.weights):
+            distance_to_bmu = np.linalg.norm(self.weights[bmu] - node_weight)
+
+            if distance_to_bmu >= min_distance:
+                # Use weight as radius in the Gaussian neighborhood function
+                neighborhood_influence = self.gaussian_function(distance_to_bmu, weight)
+
+                # Apply the weight update
+                weight_update = learning_rate * neighborhood_influence * (input_vector - node_weight)
+                self.weights[node_id] += weight_update
+
+    def fit(self, data: List[np.ndarray], epochs: int, min_distance: float) -> None:
+        """
+        Train the SOM using the given data for a specified number of epochs.
+
+        Parameters:
+        - data (list): List of input vectors with weights. Each element is a 3-element array: [x, y, weight].
+        - epochs (int): Number of training epochs.
+        - min_distance (float): Learning rate scaling factor.
+        - neighborhood_radius (float): Radius of the neighborhood function around the BMU.
+        """
+        min_distance = min_distance / epochs
+
+        for epoch in tqdm(range(epochs), desc="Training", unit="epoch"):
+            min_distance_epoch = min_distance * (epoch + 1)
+            shuffled_data = data.copy()
+            random.shuffle(shuffled_data)
+
+            for row in shuffled_data:
+                input_vector = row[:2]           # First two elements
+                weight = row[2]                  # Third element
+
+                bmu = self.find_best_matching_unit(input_vector)
+                self.update_weights_with_gaussian_kernel(
+                    input_vector,
+                    bmu,
+                    epoch,
+                    epochs,
+                    min_distance=min_distance_epoch,
+                    weight=weight                # NEW: Pass weight
+                )
+
+        error = self.quantization_error([d[:2] for d in data])
+        print("Error = {}".format(error))
+
 
 
 class RegSOM(SelfOrganizingMap):
@@ -399,60 +474,7 @@ class RegSOM(SelfOrganizingMap):
             predictions.append(prediction)
 
         return np.array(predictions)
-        
-
-class SOM_Regression(SelfOrganizingMap):
-    def __init__(self, input_size: int, hexagonal_graph, learning_rate: float = 0.01):
-        super().__init__(input_size, hexagonal_graph, learning_rate)
-        
-    def update_weights_for_regression(self, input_vector: np.ndarray, target_value: float,
-                                      bmu: int, epoch: int, max_epochs: int,
-                                      neighborhood_radius: float = 1.5, sigma: float = 1.0) -> None:
-        """
-        Update the weights of the SOM nodes for regression.
-
-        Parameters:
-        - input_vector (numpy.ndarray): Input vector used for weight updates.
-        - target_value (float): Target value to approximate.
-        - bmu (int): Index of the best matching unit.
-        - epoch (int): Current training epoch.
-        - max_epochs (int): Maximum number of training epochs.
-        - neighborhood_radius (float): Radius of the neighborhood for weight updates. Default is 1.4.
-        - sigma (float): Width parameter of the Gaussian RBF kernel. Default is 1.0.
-        """
-        learning_rate = self.learning_rate * (1 - epoch / max_epochs)
-
-        for node_id, weight in enumerate(self.weights):
-            distance_to_bmu = np.linalg.norm(self.weights[bmu] - weight)  # Euclidean distance
-            normalized_distance = distance_to_bmu / neighborhood_radius
-
-            # Use the Gaussian RBF kernel as the neighborhood influence
-            neighborhood_influence = self.gaussian_rbf_kernel(np.array([normalized_distance]), np.array([0]), sigma)
-
-            # Calculate the difference between the target value and the model's prediction
-            prediction = np.dot(weight, input_vector)  # Dot product as a simple linear regression model
-            prediction_error = target_value - prediction
-
-            # Weight update to minimize the prediction error
-            weight_update = learning_rate * neighborhood_influence * prediction_error * input_vector
-
-            self.weights[node_id] += weight_update
-            
-    def fit(self, data: List[np.ndarray], target: List[np.ndarray], epochs: int, min_distance: float, neighborhood_radius: float) -> None:
-        """
-        Train the SOM using the given data for a specified number of epochs.
-
-        Parameters:
-        - data (list): List of input vectors for training.
-        - epochs (int): Number of training epochs.
-        """
-        for epoch in tqdm(range(epochs), desc="Training", unit="epoch"):
-            for (input_vector, target_vector) in zip(data, target):
-                bmu = self.find_best_matching_unit(input_vector)
-                self.update_weights_for_regression(input_vector, target_vector, bmu, epoch, epochs, min_distance=min_distance, neighborhood_radius=neighborhood_radius)
-                
-        error = self.quantization_error(data)
-        print("Error = {}".format(error))
+    
         
 class StochasticSOM(RegSOM):
     def __init__(self, hexagonal_graph, learning_rate: float = 0.01):
